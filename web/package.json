@@ -1,0 +1,8 @@
+{
+  "name": "wiiconverted-web",
+  "private": true,
+  "description": "WiiConverted's pages on the site; make.py runs wrangler from here",
+  "devDependencies": {
+    "wrangler": "^4.141.0"
+  }
+}

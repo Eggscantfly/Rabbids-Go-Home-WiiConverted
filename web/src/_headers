@@ -1,0 +1,13 @@
+# The headers of the static assets (the Worker sets its own on what it serves itself: worker.js).
+# The pages revalidate on every visit (the assets' default Cache-Control); the files under assets/ carry their
+# content's hash in their names, so they are kept for good.
+
+/RGH/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/RGH/wc/assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable

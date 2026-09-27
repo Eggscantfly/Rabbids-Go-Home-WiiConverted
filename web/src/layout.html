@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#6A4FC1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">{{head_extra}}
+<link rel="canonical" href="{{canonical}}">
+<link rel="icon" href="{{favicon}}" sizes="any">
+<link rel="apple-touch-icon" href="{{touch_icon}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="WiiConverted">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{canonical}}">
+<meta property="og:image" content="{{og_image}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="{{css}}">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="{{home_url}}">
+      <img class="brand-icon" src="{{wc_icon}}" alt="" width="34" height="{{wc_icon_h}}">
+      <span class="brand-names"><span class="brand-title">WiiConverted</span><span class="brand-sub">Rabbids Go Home for PC</span></span>
+    </a>
+    <nav class="nav" aria-label="Pages">
+{{nav}}
+    </nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <h1 class="page-title">{{page_title}}</h1>
+      <a class="btn btn-play" href="{{download_url}}"><svg class="btn-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 1h2v7.59l2.3-2.3 1.4 1.42L8 12.41 3.3 7.71l1.4-1.42L7 8.59V1zM2 13.5h12V15H2z"/></svg>Download</a>
+    </header>
+    <main class="page{{page_class}}">
+{{content}}
+    </main>
+  </div>
+</div>
+</body>
+</html>

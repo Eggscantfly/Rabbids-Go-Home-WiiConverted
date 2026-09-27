@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rghport"
+version = "0.1.0"
+description = "Builds a Windows port of the Wii version of Rabbids Go Home from the Wii game data and the PC release"
+requires-python = ">=3.10"
+dependencies = ["numpy"]
+
+[project.scripts]
+rghport = "rghport.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rghport*"]
+
+[tool.setuptools.package-data]
+rghport = ["data/*.ico"]

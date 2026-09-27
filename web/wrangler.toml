@@ -1,0 +1,32 @@
+# wrangler.toml - WiiConverted's pages on the site: https://www.joykhloe.com/RGH/wc/home (README.md).
+# Deploy with `python web/make.py deploy`, which builds out/site first and uploads the downloads to R2.
+name = "wiiconverted-web"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+# served on the site routes only; no workers.dev address
+workers_dev = false
+
+# The zone's other Worker (the Robox pages, joykhloe.com/robox*) is left alone. Route paths are case sensitive: the
+# lower-case pair only redirects to /RGH/ (worker.js). A matched route is answered at the edge, so the apex works
+# although its origin certificate does not.
+routes = [
+  { pattern = "www.joykhloe.com/RGH*", zone_name = "joykhloe.com" },
+  { pattern = "joykhloe.com/RGH*", zone_name = "joykhloe.com" },
+  { pattern = "www.joykhloe.com/rgh*", zone_name = "joykhloe.com" },
+  { pattern = "joykhloe.com/rgh*", zone_name = "joykhloe.com" },
+]
+
+# the pages, the stylesheet and the pictures (make.py build); /RGH/wc/home serves RGH/wc/home.html
+[assets]
+directory = "out/site"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+not_found_handling = "none"
+
+# the downloads: the setup zip and the mods' zips (make.py deploy uploads them)
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "wiiconverted-downloads"
+
+[observability]
+enabled = true

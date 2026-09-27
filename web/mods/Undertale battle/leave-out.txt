@@ -1,0 +1,2 @@
+# Undertale's songs: the battle reads them from the player's own copy of Undertale (config.lua)
+*.ogg

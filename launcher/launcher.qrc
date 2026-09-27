@@ -1,0 +1,23 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <!-- the art of the window, from Assets/ next to the repository's launcher folder -->
+  <qresource prefix="/">
+    <file alias="logo.png">../Assets/title/RGH Logo.png</file>
+    <file alias="wordmark.png">../Assets/title/WiiConverted.png</file>
+    <file alias="moon.png">../Assets/GUI/rgh moon upscaled.png</file>
+    <file alias="moonicon.png">../Assets/GUI/rgh moon.png</file>
+    <file alias="button.png">../Assets/GUI/RGH button.png</file>
+    <file alias="slider.png">../Assets/GUI/RGH Slider.png</file>
+    <file alias="settings.png">../Assets/GUI/icon_1.png</file>
+    <file alias="mods.png">../Assets/GUI/Rabbid mod.png</file>
+    <file alias="font.ttf">../Assets/Font/Rabbids_go_home.ttf</file>
+    <file alias="wcicon.png">../Assets/GUI/WC icon.png</file>
+    <file alias="setup.rghs">../Assets/Audio/setup.rghs</file>
+    <file alias="sfx/fill.wav">../Assets/Audio/sfx/fill.wav</file>
+    <file alias="sfx/gift.wav">../Assets/Audio/sfx/gift.wav</file>
+    <file alias="meter/HUD_endlevel_3_0.png">../Assets/GUI/meter/HUD_endlevel_3_0.png</file>
+    <file alias="meter/layout.json">../Assets/GUI/meter/layout.json</file>
+    <file alias="chevron.png">res/chevron.png</file>
+    <file alias="folder.png">res/folder.png</file>
+  </qresource>
+</RCC>

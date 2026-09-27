@@ -1,0 +1,62 @@
+# rghport - what never goes into the repository.
+#
+# Game data and everything derived from it stay out (DESIGN.md, "Data policy"): the Wii and PC game folders, port
+# folders, their caches, saves, logs and smoke-test output.  Build output and archives dropped next to the sources
+# stay out too.
+
+# --- game data: input folders, port folders, caches, saves, logs ---------------------------------------------------
+/Bf files/
+/Bf files.cache/
+/PC test/
+/PC test.cache/
+/tmp_*/
+*.cache/
+*.bf
+*.BF
+*.sav
+wiimote_log.txt
+RGHPort.ini
+
+# --- build output --------------------------------------------------------------------------------------------------
+/build/
+/dist/
+/Cpp Src/build/
+/platform/build/
+/platform/sm64/build/
+/launcher/stub/stub.ico
+__pycache__/
+*.pyc
+*.pyd
+*.egg-info/
+*.log
+*.pdb
+*.ilk
+
+# --- the site's pages (web/): the build, wrangler's local state and packages, what the uploads put into R2 --------
+/web/out/
+/web/.wrangler/
+/web/node_modules/
+/web/.deployed.json
+
+# --- archives and downloads dropped next to the sources ------------------------------------------------------------
+*.zip
+*.7z
+*.rar
+
+# --- editors and the OS --------------------------------------------------------------------------------------------
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# The script record layers (script_overrides/) are records taken from the game and patched, which the data policy
+# above counts as game data: they ship with the setup download instead (dist\RGHPort carries them), and a conversion
+# from this repository needs --script-overrides pointing at a copy.  Comment the line out to publish them here.
+/script_overrides/
+
+# --- third-party trees used from outside -----------------------------------------------------------------------------
+# The Super Mario 64 decompilation (n64decomp/sm64) that platform/sm64/import-objects.py copies the object engine
+# from; what it copied is in platform/sm64/libsm64-master.
+/sm64-master/

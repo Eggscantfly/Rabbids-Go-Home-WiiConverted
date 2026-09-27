@@ -1,0 +1,18 @@
+      <div class="list-head">
+        <h2 class="list-title">Mods</h2>
+        <span class="list-count">{{count}}</span>
+        <a class="btn btn-action" href="#install">How to install a mod</a>
+      </div>
+      <p class="muted body">Mods for the launcher's Mods page. A mod is a folder in the game folder's mods folder: a mod.json (name, author, version, description, icon, screenshots) and what the game reads instead of its archive - entries, records, main.lua. Nothing in the game's archive is changed: turn a mod off and the game has its own files back.</p>
+      <div class="cards">
+{{cards}}
+      </div>
+      <section class="panel" id="install">
+        <h2 class="panel-head">Installing a mod</h2>
+        <ol class="install body">
+          <li>Download the mod and unzip it into the mods folder of your game folder, so that its mod.json ends up in <code>mods\&lt;the mod&gt;\</code>. The launcher's Mods page has a button that opens that folder.</li>
+          <li>In the launcher, open Mods, click the mod and press Enable.</li>
+          <li>Press Play. The game reads the enabled mods from their folders when it starts; Disable takes a mod out again.</li>
+        </ol>
+{{guide}}
+      </section>

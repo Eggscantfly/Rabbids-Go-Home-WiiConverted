@@ -1,0 +1,29 @@
+// stub.rc - the icon (1: stub.ico, which build_launcher.bat copies from Assets\GUI\WC icon.ico, or LAUNCHER_ICON) and
+// the version block of "WiiConverted Launcher.exe".
+#include <windows.h>
+
+1 ICON "stub.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 2,0,0,0
+ PRODUCTVERSION 2,0,0,0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "WiiConverted Launcher (Rabbids Go Home, Wii version on PC)"
+            VALUE "FileVersion", "2.0.0.0"
+            VALUE "InternalName", "stub"
+            VALUE "OriginalFilename", "WiiConverted Launcher.exe"
+            VALUE "ProductName", "RGHPort"
+            VALUE "ProductVersion", "2.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

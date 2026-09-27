@@ -1,0 +1,2 @@
+# Super Mario 64's music as audio files: the mod plays SM64's own music from the player's ROM
+entries/MUS/

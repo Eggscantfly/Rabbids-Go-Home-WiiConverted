@@ -1,0 +1,29 @@
+// launcher.rc - the icon (the WC mark: stub/stub.ico, put there by build_launcher.bat) and the version block of
+// RGHLauncher.exe, which build_app.bat also copies next to rghport-cli.exe as RGHPort.exe, the setup.
+#include <windows.h>
+
+1 ICON "stub/stub.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 2,2,0,0
+ PRODUCTVERSION 2,2,0,0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "WiiConverted (Rabbids Go Home, Wii version on PC): the launcher and the setup"
+            VALUE "FileVersion", "2.2.0.0"
+            VALUE "InternalName", "RGHLauncher"
+            VALUE "OriginalFilename", "RGHLauncher.exe"
+            VALUE "ProductName", "RGHPort"
+            VALUE "ProductVersion", "2.2.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -1,0 +1,1 @@
+The Lua logo - lua.org, (c) Lua.org, free to use

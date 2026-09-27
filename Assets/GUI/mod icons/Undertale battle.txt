@@ -1,0 +1,1 @@
+The light bulb the battle uses for its soul, drawn for this mod (wm_battle.cpp draws the same one)
