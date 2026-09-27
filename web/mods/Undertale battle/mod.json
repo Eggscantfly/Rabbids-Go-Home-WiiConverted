@@ -2,6 +2,6 @@
   "name": "Undertale battle",
   "author": "Eggscantfly",
   "version": "0.2",
-  "description": "An encounter, the way that other game does them. Press G and the level stops being a level: the picture goes black, an exclamation mark goes up over where you stood, the soul blinks three times and falls into a box, and Spider Dance starts. FIGHT gives you the real attack bar; ACT, ITEM and MERCY say their piece. The soul is not a heart - it is the rabbids' light bulb, which is the only correct choice. The mod is Lua: main.lua is the whole battle and data_win.lua is its reader for that game's data file, so anything here can be changed without rebuilding anything. wiimote.dll only lends it pictures, sounds, music and the switches that stop the world - it holds none of this. Everything it needs is read from your own copy of Undertale while you play; nothing of that game is here. Point config.lua at that folder; the same file sets the key, the song and the volumes.",
+  "description": "Start an Undertale-style battle in any level of Rabbids Go Home. Press G to begin the encounter, complete with the battle intro and Spider Dance. FIGHT uses the real attack bar, and ACT, ITEM and MERCY work as menu options. The mod is written in Lua, so it can be changed without rebuilding anything. It needs your own copy of Undertale, which it reads while you play. Set the Undertale folder in config.lua, where you can also change the key, the song and the volumes.",
   "icon": "icon.png"
 }
