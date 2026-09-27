@@ -2,7 +2,8 @@
 //
 // What: libsm64 (https://github.com/libsm64/libsm64, the SM64 decompilation's Mario code as a library) runs Mario's
 // movement, collision and animation on a set of collision surfaces and hands back his position and the triangles of
-// his model every 30 Hz tick.  This module loads it (sm64.dll next to the executable, built by platform\sm64\build.bat),
+// his model every 30 Hz tick.  This module loads it (sm64.dll next to the executable, else in the mod's own folder;
+// built by platform\sm64\build.bat),
 // gives it the player's own SM64 ROM (the library reads Mario's texture and animations from it: the ROM is never
 // shipped), the collision of the loaded mod level (mods\<mod>\sm64\surfaces.bin, written by the level builder in SM64
 // units with the transform to the game's units) and draws Mario into the 3D image right after the engine's own
@@ -3470,9 +3471,18 @@ void Sm64Attach(const std::string& /*iniPath*/) {
         }
     }
     if (ModsSetting(MOD_NAME, "", "audio_dump", v)) s_audioDumpPath = v;
+    // next to the executable, else the copy the mod carries in its own folder (a downloaded mod brings one)
     std::string lib = g_dllDir + "sm64.dll";
     s_lib = LoadLibraryA(lib.c_str());
-    if (!s_lib) { SmLog("%s not found: Mario is off", lib.c_str()); s_enabled = false; s_inAttach = false; return; }
+    if (!s_lib) {
+        std::string own = ModsFolder(MOD_NAME) + "\\sm64.dll";
+        s_lib = LoadLibraryA(own.c_str());
+        if (s_lib) lib = own;
+    }
+    if (!s_lib) {
+        SmLog("sm64.dll is neither next to the executable nor in %s: Mario is off", ModsFolder(MOD_NAME).c_str());
+        s_enabled = false; s_inAttach = false; return;
+    }
 #define GET(sym, type, var) var = (type)GetProcAddress(s_lib, sym); if (!var) { SmLog("sm64.dll has no %s: Mario is off", sym); s_enabled = false; s_inAttach = false; return; }
     GET("sm64_global_init", sm64_global_init_t, p_global_init)
     GET("sm64_global_terminate", sm64_global_terminate_t, p_global_terminate)
@@ -3523,7 +3533,7 @@ void Sm64Attach(const std::string& /*iniPath*/) {
     OPT("sm64_threats", sm64_threats_t, p_threats)
     OPT("sm64_prey_set", sm64_prey_set_t, p_prey_set)
     OPT("sm64_prey_hits", sm64_prey_hits_t, p_prey_hits)
-    SmLog("sm64.dll at %p, wiimote.dll at %p (a crash's addresses are offsets from these)", (void*)s_lib, (void*)GetModuleHandleA("wiimote.dll"));
+    SmLog("%s at %p, wiimote.dll at %p (a crash's addresses are offsets from these)", lib.c_str(), (void*)s_lib, (void*)GetModuleHandleA("wiimote.dll"));
 #undef OPT
     {                                            // the engine's object routines the movable collision calls
         ProcessImage img;

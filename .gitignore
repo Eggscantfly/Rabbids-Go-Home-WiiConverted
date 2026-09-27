@@ -37,6 +37,7 @@ __pycache__/
 /web/.wrangler/
 /web/node_modules/
 /web/.deployed.json
+/web/mods/*/release/*.dll
 
 # --- archives and downloads dropped next to the sources ------------------------------------------------------------
 *.zip

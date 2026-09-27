@@ -45,9 +45,10 @@ themselves - and `icon.txt`. Two files of the site's own, in `web/mods/<mod>/`, 
   a line ending in `/` is a whole folder, `#` starts a comment): another game's assets the mod reads from the
   player's own copy. It's a me! leaves out `entries/MUS/` (Super Mario 64's music as audio files; the mod plays it
   from the player's ROM), Undertale battle `*.ogg` (that game's songs).
-- `release/`: files that take the place of the mod's own in the download - It's a me!'s `config.ini` without this
-  computer's ROM folder and with the crash hunt off (`debug=0`), Undertale battle's `config.lua` reading Undertale
-  from Steam's folder.
+- `release/`: files that take the place of the mod's own in the download, or that it adds - It's a me!'s
+  `config.ini` without this computer's ROM folder and with the crash hunt off (`debug=0`), and its `sm64.dll`
+  (`platform\sm64\build.bat`'s build, copied in by hand and kept out of git): the platform DLL loads it from the mod's
+  own folder when the game folder has none. Undertale battle's `config.lua` reads Undertale from Steam's folder.
 
 `pack` points out text files that still name a folder on this computer. The build refuses a zip holding a ROM or a
 data file. To take a mod off the page, delete its folder and deploy (its zip goes from R2 too). The zips stay out of

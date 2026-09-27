@@ -275,3 +275,13 @@ After a conversion you trust, record the hashes of its output; after converting 
 
     python tests/regression.py record --out <port folder> --reference <file outside the repository>
     python tests/regression.py check  --out <port folder> --reference <the same file>
+
+## A note on AI assistance
+
+Parts of this project were written with Claude (Anthropic). Commits carrying a `Co-Authored-By: Claude` trailer had AI
+involvement.
+
+This is stated plainly for two reasons. One is attribution — it should be clear which work was not written unaided. The
+other matters more if you are reading the code: AI-written code can be confidently wrong in ways that read as
+authoritative, and its comments are no exception. Where a comment here explains why something is converted or patched
+a particular way, treat it as a claim to check rather than a citation.

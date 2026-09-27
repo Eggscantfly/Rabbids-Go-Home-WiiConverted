@@ -2023,7 +2023,7 @@ and the demo mod's texts over the picture.
 
 `libsm64` (the SM64 decompilation built as a library) runs Mario's movement, collision, animation and camera-less
 state machine on a set of collision surfaces and hands back his position and the triangles of his model every 30 Hz
-tick. `sm64.dll` sits next to the executable; `[sm64] rom=` names the player's own Super Mario 64 (USA) `.z64`,
+tick. `sm64.dll` sits next to the executable, or in the mod's own folder (the downloaded mod carries one); `[sm64] rom=` names the player's own Super Mario 64 (USA) `.z64`,
 because Mario's texture and animations are read out of it at startup. Nothing of the ROM is shipped.
 
 The level provides the collision: a level mod carries `mods\<mod>\sm64\surfaces.bin` ("SM64", version, the scale
@@ -2179,7 +2179,7 @@ Two things learned the hard way: the display list pool is emptied at the start o
 `obj_orient_graph` (anything on a slope: Bob-ombs, coins, MIPS, Yoshi) allocates its matrix during the behaviour
 update, and emptying the pool at the render's start freed it before it was drawn, so those objects jumped about
 every frame.  And `platform\build.bat` now links `wiimote.dll` with a PDB (`build\wiimote.pdb`), and the module
-logs both DLLs' load addresses at start (`sm64.dll at ..., wiimote.dll at ...`), so a crash's return addresses
+logs both DLLs' load addresses at start (`<the sm64.dll it loaded> at ..., wiimote.dll at ...`), so a crash's return addresses
 can be turned into lines without a dump: `llvm-symbolizer --obj=sm64.dll --relative-address <address - base>`,
 and `llvm-symbolizer --obj=wiimote.dll` the same way with the PDB beside it.
 
