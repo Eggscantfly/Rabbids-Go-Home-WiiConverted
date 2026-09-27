@@ -2,6 +2,6 @@
   "name": "It's a me!",
   "author": "Eggscantfly",
   "version": "1.0",
-  "description": "Play as Mario in any level of Rabbids Go Home. Press M to switch between Mario and the rabbids. Mario controls just like in Super Mario 64, and his punches stun humans and make them drop what they carry. Press T to open a menu and spawn enemies, bosses and items from Super Mario 64 in front of him, such as Goombas, Bob-ombs, Chain Chomps, Thwomps and Bowser. The level's humans run away from the enemies you spawn. Coins and stars are counted on his HUD. The mod needs your own Super Mario 64 (USA) .z64 ROM. Place it in this mod's folder or set its path in config.ini.",
+  "description": "Play as Mario in any level of Rabbids Go Home. Press M to switch between Mario and the rabbids. Mario controls just like in Super Mario 64, and his punches stun humans and make them drop what they carry. Press T to open a menu and spawn enemies, bosses and items from Super Mario 64 in front of him, such as Goombas, Bob-ombs, Chain Chomps, Thwomps and Bowser. The level's humans run away from the enemies you spawn. Coins and stars are counted on his HUD. Press E to replace the star counter with a speed meter and allow backwards long jumps anywhere. Press Q to toggle rapid fire. The mod needs your own Super Mario 64 (USA) .z64 ROM. Place it in this mod's folder or set its path in config.ini.",
   "icon": "icon.png"
 }
