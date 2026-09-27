@@ -38,13 +38,19 @@ std::wstring gameFolder() {
 }
 
 QIcon windowIcon(const std::wstring& dir) {
-    // the stub's icon (the one the setup gave the game folder), else the WC mark
-    std::wstring stub = dir + L"\\WiiConverted Launcher.exe";
-    HICON large = nullptr;
-    if (ExtractIconExW(stub.c_str(), 0, &large, nullptr, 1) > 0 && large) {
-        QIcon icon(QPixmap::fromImage(QImage::fromHICON(large)));
-        DestroyIcon(large);
-        return icon;
+    // the stub's icon (the one the setup gave the game folder), else this program's own (launcher.rc): both are the
+    // square .ico.  The WC mark's picture is twice as wide as it is high and would be squeezed into the square the
+    // title bar and the taskbar show, so it is only the last resort.
+    wchar_t self[MAX_PATH] = L"";
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    const std::wstring sources[] = { dir + L"\\WiiConverted Launcher.exe", self };
+    for (const std::wstring& exe : sources) {
+        HICON large = nullptr;
+        if (!exe.empty() && ExtractIconExW(exe.c_str(), 0, &large, nullptr, 1) > 0 && large) {
+            QIcon icon(QPixmap::fromImage(QImage::fromHICON(large)));
+            DestroyIcon(large);
+            return icon;
+        }
     }
     return QIcon(":/wcicon.png");
 }

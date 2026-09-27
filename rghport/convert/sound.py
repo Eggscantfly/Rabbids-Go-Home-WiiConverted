@@ -235,8 +235,8 @@ def regroup_set(body: bytes, mg: MixGroups) -> bytes:
     target = None
     if kind == "music" and not mg.below(group, GROUP_USER_MUSIC):
         target, label = GROUP_MUSIC, "music"
-    elif kind == "effects" and group == GROUP_MASTER:
-        target, label = GROUP_SFX, "effects"
+    # Effects in MASTER stay there (2026-09-27): the game fades SFX and the groups below it when the player dies, and
+    # the sets it keeps in MASTER - the death sound, jingles - must not fade with them (moved to SFX they did).
     if target is None:
         return body
     if mg.level(group) is None or mg.level(group) != mg.level(target):

@@ -22,8 +22,9 @@
 // Volumes.  The sound engine keeps a volume offset per sound group in millibels (SND_GroupOffsetSet_C; group volume =
 // own offset + base volume + the parent group's volume, 0049C3E0).  Master is group 0 (MASTER), music the mix's
 // USER_MUSIC (2, above MUSIC 12 and the radio groups 39-41), effects SFX (10), AMB (11) and HUD (14) with the groups
-// below them, voices DIALOG (13).  The converter moves the sets the mix files elsewhere (jingles in MASTER, radio songs
-// in the ambience groups ...) to the group of their kind without changing their volume (rghport/convert/sound.py).
+// below them, voices DIALOG (13).  The converter moves music the mix files elsewhere (radio songs in the ambience
+// groups ...) to the music group without changing its volume (rghport/convert/sound.py); effects the mix keeps in
+// MASTER (the death sound, jingles) stay there and follow the master slider only, since the game fades SFX on death.
 // A slider sets 40 log10(percent / 100) dB (the gain squared: halfway is -12 dB), 0 % silence.
 //
 // Shift, Ctrl and Alt are one binding each for both sides (the combined VK_SHIFT / VK_CONTROL / VK_MENU of the
