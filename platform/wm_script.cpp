@@ -29,6 +29,14 @@
 //                        "C:\Documents and Settings\All Users\Bureau\Custo.jpg" whenever ViD_PlatformCurrentGet() is not
 //                        1, which it is not with platform=pc.  Here every open answers -1 and the other file natives
 //                        read -1 (-1.0, EOF 1) or do nothing.
+// mix_guard=1            the ACT module's mix layer natives ACT_ItemMixFrameSet, ACT_ItemMixTimeRatioSet, ACT_MixFinished
+//                        and ACT_MixOff (handlers 0058D5B0, 0058D800, 0058DA40, 0058CE90) index the actor's mix layers
+//                        (+0x30 + 4 x layer) without a range check; ACT_MixValueSet / Get check it (< 5).  ACT_MixAdd
+//                        (0058CA20 -> 00553060) answers -1 when the actor has no free layer (1..4) or no such action,
+//                        and the Wii's CR_STATE_TATA (the rabbid in the remote; Rabbid Do-What-I-Do from its second
+//                        level) hands that -1 to ACT_ItemMixFrameSet: slot -1 is NULL, access violation at 00552760.
+//                        A layer outside 0..5 is skipped (ACT_MixFinished answers 1: there is nothing left to play);
+//                        ACT_MixAdd's -1 is logged with its action.
 // enabled=1              0 leaves all of these natives to the engine.
 #include "wiimote.h"
 
@@ -49,17 +57,32 @@ struct VmCtx {
     uint32_t* vmOffset;     // 0x00A7E18C bytes used in the value area
     uint32_t* vmData;       // 0x00A7E198 value area
     uint32_t* vmPtrs;       // 0x00A7E19C entry pointers
+    uint32_t* scrCtx;       // 0x00A72530 the script context (+0x2380C the object the next native acts on)
 };
-VmCtx s_game = { (uint32_t*)0x00A7E188, (uint32_t*)0x00A7E18C, (uint32_t*)0x00A7E198, (uint32_t*)0x00A7E19C };
+VmCtx s_game = { (uint32_t*)0x00A7E188, (uint32_t*)0x00A7E18C, (uint32_t*)0x00A7E198, (uint32_t*)0x00A7E19C,
+                 (uint32_t*)0x00A72530 };
 VmCtx* s_vm = &s_game;
 
+// the script context: a native reads the object it acts on (+0x2380C, an "obj." prefix) and puts the default back
+const uint32_t CTX_OBJECT = 0x2380C, CTX_DEFAULT = 0x23810;
+const int32_t  MIX_LAYERS = 6;
+
 enum { PLATFORM_PC = 0, PLATFORM_WII = 1 };
-enum { F_PLATFORM, F_POINTER, F_RETURN, F_FILE };
+enum { F_PLATFORM, F_POINTER, F_RETURN, F_FILE, F_MIX };
+
+// the engine handlers the mix guard passes valid calls to (the self-test points these at fakes)
+enum { E_MIXADD, E_FRAMESET, E_TIMERATIOSET, E_FINISHED, E_MIXOFF, N_ENGINE };
+NativeFn s_engine[N_ENGINE] = {
+    (NativeFn)(uintptr_t)0x0058CA20, (NativeFn)(uintptr_t)0x0058D5B0, (NativeFn)(uintptr_t)0x0058D800,
+    (NativeFn)(uintptr_t)0x0058DA40, (NativeFn)(uintptr_t)0x0058CE90,
+};
 
 bool         s_enabled = true;
 int          s_platform = PLATFORM_WII;
 bool         s_pointerFeature = true;
 bool         s_returnQuit = true;
+bool         s_mixGuard = true;
+LONG         s_mixLogs;                 // mix layer calls skipped and ACT_MixAdd failures logged so far (the first 16)
 LONG         s_pointerOn[4] = { 1, 1, 1, 1 };
 bool         s_inAttach;
 bool         s_verified;
@@ -220,16 +243,78 @@ void* __cdecl H_FileEOF(void* ip) {             // IO_FileEOF(handle) -> 1
     return (uint8_t*)ip + 4;
 }
 
+// the mix layer guard (see the top of the file)
+inline bool MixLayerValid(int32_t layer) { return layer >= 0 && layer < MIX_LAYERS; }
+
+void MixLog(const char* fmt, ...) {
+    if (InterlockedIncrement(&s_mixLogs) > 16) return;
+    char buf[300];
+    va_list ap;
+    va_start(ap, fmt);
+    _vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
+    buf[sizeof(buf) - 1] = 0;
+    va_end(ap);
+    ScrLog("%s", buf);
+}
+
+// what the skipped engine handler does besides its work: the next native acts on the default object again
+void DropObjectPrefix() {
+    uint8_t* ctx = (uint8_t*)(uintptr_t)*s_vm->scrCtx;
+    if (ctx) *(uint32_t*)(ctx + CTX_OBJECT) = *(uint32_t*)(ctx + CTX_DEFAULT);
+}
+
+void* MixSkip(void* ip, const char* name, int32_t layer, int args) {
+    MixLog("%s(%d): no such mix layer (an ACT_MixAdd that answered -1): skipped", name, layer);
+    DropObjectPrefix();
+    PopInts(args);
+    return (uint8_t*)ip + 4;
+}
+
+void* __cdecl H_MixAdd(void* ip) {              // ACT_MixAdd(action, flags, blend, a4, a5) -> layer or -1
+    int32_t action = Arg(5, 0), flags = Arg(5, 1);
+    void* r = s_engine[E_MIXADD](ip);
+    if (*s_vm->vmIndex && Arg(1, 0) == -1)
+        MixLog("ACT_MixAdd(action %d, flags %d) -> -1: no free mix layer or no such action", action, flags);
+    return r;
+}
+
+void* __cdecl H_ItemMixFrameSet(void* ip) {     // ACT_ItemMixFrameSet(layer, frame)
+    int32_t layer = Arg(2, 0);
+    if (MixLayerValid(layer)) return s_engine[E_FRAMESET](ip);
+    return MixSkip(ip, "ACT_ItemMixFrameSet", layer, 2);
+}
+
+void* __cdecl H_ItemMixTimeRatioSet(void* ip) { // ACT_ItemMixTimeRatioSet(layer, ratio)
+    int32_t layer = Arg(2, 0);
+    if (MixLayerValid(layer)) return s_engine[E_TIMERATIOSET](ip);
+    return MixSkip(ip, "ACT_ItemMixTimeRatioSet", layer, 2);
+}
+
+void* __cdecl H_MixFinished(void* ip) {         // ACT_MixFinished(layer) -> 0 / 1
+    int32_t layer = Arg(1, 0);
+    if (MixLayerValid(layer)) return s_engine[E_FINISHED](ip);
+    void* r = MixSkip(ip, "ACT_MixFinished", layer, 1);
+    PushInt(1);
+    return r;
+}
+
+void* __cdecl H_MixOff(void* ip) {              // ACT_MixOff(layer)
+    int32_t layer = Arg(1, 0);
+    if (MixLayerValid(layer)) return s_engine[E_MIXOFF](ip);
+    return MixSkip(ip, "ACT_MixOff", layer, 1);
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // the PC executable (2010 build): what is verified and what is replaced
 // ---------------------------------------------------------------------------------------------------------------
 struct ScrWord {
     uint32_t key, oldFn, len, crc;
-    uint32_t reg;           // imm32 of "mov [esp+x], handler" in ViD::RegisterScript
+    uint32_t reg;           // imm32 of "mov [esp+x], handler" in ViD::RegisterScript (or the module's registrar)
     bool     reg32;         // C7 84 24 disp32 imm32 (else C7 44 24 disp8 imm32)
     NativeFn fn;
     const char* name;
     int      feature;
+    bool     module;        // a module word (its key's low half is assigned at registration): matched by its handler
 };
 
 const ScrWord kWords[] = {
@@ -247,13 +332,18 @@ const ScrWord kWords[] = {
     { 0x00BCFFFF, 0x005EEA20, 0x077, 0xC39DB3FC, 0x0054363B, false, H_FileGetFloat, "IO_FileGetF", F_FILE },
     { 0x00BDFFFF, 0x005EEB00, 0x082, 0xFF7970C5, 0x0054366F, false, H_FileEOF, "IO_FileEOF", F_FILE },
     { 0x00BEFFFF, 0x005EE780, 0x0AC, 0xCFCFE39A, 0x005436A3, false, H_FileOpen, "IO_FileOpen", F_FILE },
+    { 0x012C000F, 0x0058CA20, 0x16F, 0x24D9D5DA, 0x0058C167, false, H_MixAdd, "ACT_MixAdd", F_MIX, true },
+    { 0x012D000F, 0x0058CE90, 0x0CB, 0xA4CD1CD9, 0x0058C19D, false, H_MixOff, "ACT_MixOff", F_MIX, true },
+    { 0x0131000F, 0x0058DA40, 0x104, 0x8B84D422, 0x0058C275, false, H_MixFinished, "ACT_MixFinished", F_MIX, true },
+    { 0x0142000F, 0x0058D800, 0x112, 0x6D778A9D, 0x0058C425, false, H_ItemMixTimeRatioSet, "ACT_ItemMixTimeRatioSet", F_MIX, true },
+    { 0x0144000F, 0x0058D5B0, 0x105, 0x510BF420, 0x0058C47D, false, H_ItemMixFrameSet, "ACT_ItemMixFrameSet", F_MIX, true },
 };
 const size_t N_WORDS = sizeof(kWords) / sizeof(kWords[0]);
 bool s_wordDone[sizeof(kWords) / sizeof(kWords[0])];
 
 bool Wanted(const ScrWord& w) {
     return w.feature == F_PLATFORM || w.feature == F_FILE || (w.feature == F_POINTER && s_pointerFeature) ||
-           (w.feature == F_RETURN && s_returnQuit);
+           (w.feature == F_RETURN && s_returnQuit) || (w.feature == F_MIX && s_mixGuard);
 }
 
 int CountWanted() {
@@ -275,6 +365,25 @@ bool CheckReg32(const Image& img, uint32_t reg, uint32_t handler, uint32_t key) 
     return false;
 }
 
+// A module registrar element: "mov [esp+x], handler" (C7 44 24 xx) with "movzx eax, word [esi+0Ah]" and this word's
+// "add eax, n << 16" (05 imm32) within 0x24 bytes on either side.  (CheckModuleEntry takes any add with n < 0x100;
+// the ACT mix words are 0x12C and up.)
+bool CheckModuleWord(const Image& img, uint32_t reg, uint32_t handler, uint32_t key) {
+    const int at = 0x24;
+    uint32_t v = 0;
+    uint8_t win[0x48];
+    if (!img.Read(reg, &v, 4) || v != handler || !img.Read(reg - at, win, sizeof(win))) return false;
+    if (!(win[at - 4] == 0xC7 && win[at - 3] == 0x44 && win[at - 2] == 0x24)) return false;
+    const uint32_t word = key & 0xFFFF0000;
+    bool movzx = false, add = false;
+    for (int i = 0; i + 5 <= (int)sizeof(win); ++i) {
+        if (i >= at - 4 && i < at + 4) continue;    // the mov itself
+        if (win[i] == 0x0F && win[i + 1] == 0xB7 && win[i + 2] == 0x46 && win[i + 3] == 0x0A) movzx = true;
+        if (win[i] == 0x05 && memcmp(&win[i + 1], &word, 4) == 0) add = true;
+    }
+    return movzx && add;
+}
+
 int ScrVerify(const Image& img, std::string& rep, bool all) {
     int bad = 0;
     uint32_t got = 0;
@@ -282,7 +391,9 @@ int ScrVerify(const Image& img, std::string& rep, bool all) {
         const ScrWord& w = kWords[i];
         if (!all && !Wanted(w)) continue;
         bool crcOk = CheckCrc(img, w.oldFn, w.len, w.crc, &got);
-        bool regOk = w.reg32 ? CheckReg32(img, w.reg, w.oldFn, w.key) : CheckRegisterScriptEntry(img, w.reg, w.oldFn, w.key);
+        bool regOk = w.module ? CheckModuleWord(img, w.reg, w.oldFn, w.key)
+                   : w.reg32  ? CheckReg32(img, w.reg, w.oldFn, w.key)
+                              : CheckRegisterScriptEntry(img, w.reg, w.oldFn, w.key);
         Report(rep, crcOk && regOk, "%-28s word %08X handler %08X len 0x%03X crc %08X (want %08X), registered at %08X%s",
                w.name, w.key, w.oldFn, w.len, got, w.crc, w.reg, regOk ? "" : " (registration differs)");
         if (!(crcOk && regOk)) ++bad;
@@ -297,7 +408,8 @@ int InstallWords() {
         if (!Wanted(w)) continue;
         if (!s_wordDone[i]) {
             std::string notes;
-            int r = PatchNativeTable(w.key, 0xFFFFFFFF, w.oldFn, (uint32_t)(uintptr_t)w.fn, notes);
+            int r = w.module ? (PatchNativeHandler(w.oldFn, (uint32_t)(uintptr_t)w.fn, notes) > 0 ? 1 : 0)
+                             : PatchNativeTable(w.key, 0xFFFFFFFF, w.oldFn, (uint32_t)(uintptr_t)w.fn, notes);
             size_t pos = 0;
             while (pos < notes.size()) {
                 size_t end = notes.find('\n', pos);
@@ -327,7 +439,9 @@ int RunSelfTest(std::string& rep) {
     uint32_t ptrs[16] = {};
     uint8_t data[256] = {};
     uint32_t dataBase = (uint32_t)(uintptr_t)data, ptrBase = (uint32_t)(uintptr_t)ptrs;
-    VmCtx fake = { &idx, &off, &dataBase, &ptrBase };
+    std::vector<uint8_t> scr(CTX_DEFAULT + 4, 0);
+    uint32_t scrBase = (uint32_t)(uintptr_t)&scr[0];
+    VmCtx fake = { &idx, &off, &dataBase, &ptrBase, &scrBase };
     VmCtx* savedVm = s_vm;
     std::string* savedLog = s_testLog;
     std::string log;
@@ -457,6 +571,82 @@ int RunSelfTest(std::string& rep) {
     }
     s_fileLogs = 0;
 
+    // 16-25: the mix layer guard.  A layer outside 0..5 pops the arguments, puts the default object back and answers
+    // ACT_MixFinished with 1; a valid one goes to the engine handler (a fake here).  ACT_MixAdd's -1 is passed on.
+    NativeFn savedEngine[N_ENGINE];
+    memcpy(savedEngine, s_engine, sizeof(savedEngine));
+    struct FakeEngine {
+        static int& Calls() { static int n; return n; }
+        static void* __cdecl Pass(void* p) { ++Calls(); return (uint8_t*)p + 4; }
+        static void* __cdecl MixAddFails(void* p) { ++Calls(); PopInts(5); PushInt(-1); return (uint8_t*)p + 4; }
+    };
+    for (int e = 0; e < N_ENGINE; ++e) s_engine[e] = FakeEngine::Pass;
+    s_engine[E_MIXADD] = FakeEngine::MixAddFails;
+    struct MixCase { NativeFn fn; const char* name; int args; int32_t layer; bool engine; bool pushes; int32_t result; };
+    const MixCase mixes[] = {
+        { H_ItemMixFrameSet, "ACT_ItemMixFrameSet(-1, 0)", 2, -1, false, false, 0 },
+        { H_ItemMixFrameSet, "ACT_ItemMixFrameSet(6, 0)", 2, 6, false, false, 0 },
+        { H_ItemMixFrameSet, "ACT_ItemMixFrameSet(2, 0)", 2, 2, true, false, 0 },
+        { H_ItemMixTimeRatioSet, "ACT_ItemMixTimeRatioSet(-1, 1.0)", 2, -1, false, false, 0 },
+        { H_ItemMixTimeRatioSet, "ACT_ItemMixTimeRatioSet(0, 1.0)", 2, 0, true, false, 0 },
+        { H_MixFinished, "ACT_MixFinished(-1)", 1, -1, false, true, 1 },
+        { H_MixFinished, "ACT_MixFinished(5)", 1, 5, true, false, 0 },
+        { H_MixOff, "ACT_MixOff(-1)", 1, -1, false, false, 0 },
+        { H_MixOff, "ACT_MixOff(1)", 1, 1, true, false, 0 },
+    };
+    const uint32_t objPrefix = 0x11111111, objDefault = 0x22222222;
+    for (size_t k = 0; k < sizeof(mixes) / sizeof(mixes[0]); ++k) {
+        const MixCase& mc = mixes[k];
+        memset(data, 0, sizeof(data));
+        idx = (uint32_t)mc.args;
+        off = 4 * (uint32_t)mc.args;
+        int32_t args[2] = { mc.layer, 0x3F800000 };
+        for (int a = 0; a < mc.args; ++a) {
+            memcpy(data + 4 * a, &args[a], 4);
+            ptrs[a] = dataBase + 4 * a;
+        }
+        memcpy(&scr[CTX_OBJECT], &objPrefix, 4);
+        memcpy(&scr[CTX_DEFAULT], &objDefault, 4);
+        FakeEngine::Calls() = 0;
+        void* mr = mc.fn(ip);
+        uint32_t obj;
+        memcpy(&obj, &scr[CTX_OBJECT], 4);
+        bool mok;
+        if (mc.engine) {
+            mok = mr == (void*)((uint8_t*)ip + 4) && FakeEngine::Calls() == 1 && idx == (uint32_t)mc.args &&
+                  obj == objPrefix;
+        } else {
+            uint32_t wantIdx = mc.pushes ? 1 : 0;
+            int32_t got = mc.pushes && idx == 1 ? *(int32_t*)(uintptr_t)ptrs[0] : 0;
+            mok = mr == (void*)((uint8_t*)ip + 4) && FakeEngine::Calls() == 0 && idx == wantIdx &&
+                  off == 4 * wantIdx && got == mc.result && obj == objDefault;
+        }
+        Report(rep, mok, "%s: %s (engine calls %d, entries %u, bytes %u, object %08X)", mc.name,
+               mc.engine ? "passed to the engine" : mc.pushes ? "skipped, answers 1" : "skipped",
+               FakeEngine::Calls(), idx, off, obj);
+        if (!mok) ++fails;
+    }
+    {
+        idx = 5;
+        off = 20;
+        const int32_t addArgs[5] = { 42, 0, 0, 0, 0 };
+        for (int a = 0; a < 5; ++a) {
+            memcpy(data + 4 * a, &addArgs[a], 4);
+            ptrs[a] = dataBase + 4 * a;
+        }
+        FakeEngine::Calls() = 0;
+        size_t before = log.size();
+        void* ar = H_MixAdd(ip);
+        int32_t got = idx == 1 ? *(int32_t*)(uintptr_t)ptrs[0] : 0;
+        bool logged = log.find("ACT_MixAdd(action 42", before) != std::string::npos;
+        bool aok = ar == (void*)((uint8_t*)ip + 4) && FakeEngine::Calls() == 1 && idx == 1 && got == -1 && logged;
+        Report(rep, aok, "ACT_MixAdd(42, ...) -> -1 from the engine: passed on and logged with its action (entries %u, "
+               "value %d, logged %d)", idx, got, logged);
+        if (!aok) ++fails;
+    }
+    memcpy(s_engine, savedEngine, sizeof(savedEngine));
+    s_mixLogs = 0;
+
     rep += log;
     s_vm = savedVm;
     s_testLog = savedLog;
@@ -486,9 +676,10 @@ void ScriptAttach(const std::string& iniPath) {
     s_platform = platform >= 0 ? platform : (CtlPcMode() ? PLATFORM_PC : PLATFORM_WII);
     if (ReadIniKey(iniPath, "script", "pointer_state", v)) s_pointerFeature = IsOn(v);
     if (ReadIniKey(iniPath, "script", "return_to_menu", v)) s_returnQuit = _stricmp(v.c_str(), "quit") == 0;
+    if (ReadIniKey(iniPath, "script", "mix_guard", v)) s_mixGuard = IsOn(v);
     if (!s_enabled) {
-        ScrLog("[script] enabled=0: ViD_PlatformCurrentGet, IO_JoystickPointerStateSet, WII_ReturnToMenu and the IO_File "
-               "natives are left to the engine");
+        ScrLog("[script] enabled=0: ViD_PlatformCurrentGet, IO_JoystickPointerStateSet, WII_ReturnToMenu, the IO_File "
+               "natives and the ACT mix layer natives are left to the engine");
         return;
     }
     ProcessImage img;
@@ -519,10 +710,10 @@ void ScriptAttach(const std::string& iniPath) {
     }
     s_verified = true;
     int done = InstallWords();
-    ScrLog("PC executable verified: platform %d (%s%s), pointer_state=%d, return_to_menu=%s; %d/%d words in the native "
-           "table, %d registration entries", s_platform, s_platform == PLATFORM_WII ? "Wii" : "PC",
-           platform < 0 ? ", auto" : "", s_pointerFeature ? 1 : 0, s_returnQuit ? "quit" : "none", done, CountWanted(),
-           reg);
+    ScrLog("PC executable verified: platform %d (%s%s), pointer_state=%d, return_to_menu=%s, mix_guard=%d; %d/%d words "
+           "in the native table, %d registration entries", s_platform, s_platform == PLATFORM_WII ? "Wii" : "PC",
+           platform < 0 ? ", auto" : "", s_pointerFeature ? 1 : 0, s_returnQuit ? "quit" : "none", s_mixGuard ? 1 : 0,
+           done, CountWanted(), reg);
 }
 
 void ScriptAfterConfig() {

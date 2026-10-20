@@ -1411,6 +1411,19 @@ is not 1, which it is not with `platform=pc`. The only PC script that uses these
 `ViD_PauseAllButMe` looked stubbed in the export scan but is real (its handler `00545F80` calls `ViD::PauseAll`
 `00503390`). `ViD_IsRetailVersion` answers 1 on the PC, the right value for the retail game.
 
+The ACT module's mix layer natives are real, but four of them index the actor's mix layers (`+0x30 + 4 x layer`)
+without a range check: `ACT_ItemMixFrameSet` (handler `0058D5B0` -> `00552750`, and the handler's own write through
+the slot), `ACT_ItemMixTimeRatioSet` (`0058D800`), `ACT_MixFinished` (`0058DA40` -> `00552D80`) and `ACT_MixOff`
+(`0058CE90` -> `005524B0`); `ACT_MixValueSet` / `Get` do check (`< 5`). `ACT_MixAdd` (`0058CA20` -> `00553060`) answers
+-1 when the actor has no action bank, the action is 0x200 or more, layers 1..4 all play other actions, or the bank
+holds no such action. The Wii's `CR_STATE_TATA` (the rabbid inside the remote performing the tata queue: Rabbid
+Do-What-I-Do from its second level) mixes two actions with `ACT_MixAdd` and hands the result to `ACT_ItemMixFrameSet`
+unchecked: layer -1 reads the NULL before the slots, access violation at `00552760` (the engine's crash handler then
+exits and dies again in `GearShutdown`, at `007D483A` or `007E3E89`). A layer outside 0..5 is now skipped like the
+checked natives do: the arguments are popped, the object prefix of the call is dropped (`[00A72530]+0x2380C` = `+0x23810`,
+what the engine handler does), `ACT_MixFinished` answers 1 (nothing left to play). `ACT_MixAdd` itself goes to the
+engine; its -1 is logged with the action.
+
 ### 18.2 Patches
 
 | Word | Native | Engine handler (length, CRC32) | Registration entry | Replacement |
@@ -1429,11 +1442,18 @@ is not 1, which it is not with `platform=pc`. The only PC script that uses these
 | `00BCFFFF` | IO_FileGetF | `005EEA20` (0x77, `C39DB3FC`) | `0054363B` | pushes -1.0 |
 | `00BDFFFF` | IO_FileEOF | `005EEB00` (0x82, `FF7970C5`) | `0054366F` | pushes 1 |
 | `00BEFFFF` | IO_FileOpen | `005EE780` (0xAC, `CFCFE39A`) | `005436A3` | pops 4 arguments, pushes -1 |
+| `012C000F` | ACT_MixAdd | `0058CA20` (0x16F, `24D9D5DA`) | `0058C167` (module) | the engine's; -1 logged with the action |
+| `012D000F` | ACT_MixOff | `0058CE90` (0x0CB, `A4CD1CD9`) | `0058C19D` (module) | layer outside 0..5: pops it |
+| `0131000F` | ACT_MixFinished | `0058DA40` (0x104, `8B84D422`) | `0058C275` (module) | layer outside 0..5: pushes 1 |
+| `0142000F` | ACT_ItemMixTimeRatioSet | `0058D800` (0x112, `6D778A9D`) | `0058C425` (module) | layer outside 0..5: pops 2 |
+| `0144000F` | ACT_ItemMixFrameSet | `0058D5B0` (0x105, `510BF420`) | `0058C47D` (module) | layer outside 0..5: pops 2 |
 
 * Every wanted word is verified first (handler CRC32 and its `ViD::RegisterScript` entry: the `mov` opcode form, the
-  handler and `push word` nearby); on any difference nothing is patched.
+  handler and `push word` nearby; for the ACT module's words the module registrar's `mov [esp+disp8]` with
+  `movzx eax, word [esi+0Ah]` and this word's `add eax, n << 16` nearby); on any difference nothing is patched.
 * The registration entries are rewritten in DllMain, so the table the engine builds afterwards holds the new
-  handlers; the table entries are also patched in place when they already exist.
+  handlers; the table entries are also patched in place when they already exist (module words: every entry holding the
+  engine handler).
 * While controller n's pointer is off, its IR pointer reads as not valid: the virtual remote's samples in
   `[controls] mode=wii` (`wm_input.cpp`), the pointer natives in `mode=pc` (`wm_ctl.cpp`, controller 0).
 * The main window is closed with WM_CLOSE (visible top-level window of the process without an owner); the engine
@@ -1446,6 +1466,7 @@ is not 1, which it is not with `platform=pc`. The only PC script that uses these
     platform=auto          ; wii (1), pc (0), auto = wii with [controls] mode=wii, pc with mode=pc
     pointer_state=1        ; IO_JoystickPointerStateSet works
     return_to_menu=quit    ; quit or none
+    mix_guard=1            ; the ACT mix layer natives skip a layer outside 0..5
 
 With `platform=pc` the shared scripts use their PC control types, the basis of PC-native controls (`[controls]
 mode=pc`).
@@ -1453,24 +1474,29 @@ mode=pc`).
 ### 18.4 Tests (offline)
 
 `wmtest script <PC executable>` writes `test\wmscript.ini`.
-* **Executable file: 14/14 PASS** (the rows above).
-* **Self-test: 16/16 PASS**: `ViD_PlatformCurrentGet` pushes 1 (wii) and 0 (pc); `IO_JoystickPointerStateSet` pops two
+* **Executable file: 19/19 PASS** (the rows above).
+* **Self-test: 26/26 PASS**: `ViD_PlatformCurrentGet` pushes 1 (wii) and 0 (pc); `IO_JoystickPointerStateSet` pops two
   arguments and turns controller 0 off, on, and ignores ids outside 0..3; `pointer_state=0` keeps the pointer on;
   `WII_ReturnToMenu` has no stack effect; the disp32 registration check matches and rejects another word or handler;
   the file natives pop their arguments and push the Wii's answers (opens -1, `IO_FileGetI` -1, `IO_FileGetF` -1.0,
-  `IO_FileEOF` 1; `IO_FilePutI` and `IO_FileClose` push nothing).
+  `IO_FileEOF` 1; `IO_FilePutI` and `IO_FileClose` push nothing); the mix layer natives with layer -1 (and 6) pop
+  their arguments without reaching the engine and put the default object back, `ACT_MixFinished(-1)` pushes 1, valid
+  layers go to the engine handler with the stack untouched; `ACT_MixAdd`'s -1 is passed on and logged.
 
 ### 18.5 In-game check
 
 1. `log=1`. The start of the log shows `SCRIPT: PC executable verified: platform 1 (Wii, auto), pointer_state=1,
-   return_to_menu=quit; 0/14 words in the native table, 14 registration entries`: the table is built after DllMain,
-   so the rewritten registration entries fill it (the video module reports the same).
+   return_to_menu=quit, mix_guard=1; 0/19 words in the native table, 19 registration entries`: the table is built
+   after DllMain, so the rewritten registration entries fill it (the video module reports the same).
 2. Boot and PLAY: `SCRIPT: IO_JoystickPointerStateSet(0, 0): pointer off` while the videos run, `... pointer on`
    afterwards; `first call: ViD_PlatformCurrentGet() -> 1 (Wii)` when the hub town loads.
 3. The rabbids push the cart and follow the stick as before.
 4. In the Wii remote with `platform=pc`: paint the rabbid and leave the paint mode, apply a texture, save a figurine.
    The log shows `SCRIPT: IO_FileOpenWrite("C:\Documents and Settings\All Users\Bureau\Custo.jpg") -> -1: the Wii's
    file natives open no file` and the game goes on (it used to end with `c000000d` in `msvcr80!fwrite`).
+5. In the Wii remote, Challenges, Rabbid Do-What-I-Do: play past level 1. The game goes on (it used to end with an
+   access violation at `00552760`, reported by Windows at `007D483A` / `007E3E89` in `GearShutdown`); when the rabbid
+   finds no mix layer the log shows `SCRIPT: ACT_MixAdd(action n, ...) -> -1` and `ACT_ItemMixFrameSet(-1): ... skipped`.
 
 ## 19. Wii after effects (`wm_afx.cpp`, `[video] afx`)
 
