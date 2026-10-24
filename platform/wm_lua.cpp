@@ -553,6 +553,8 @@ struct VmCall {
     const wmnatives::Native* native;
     std::vector<std::string> strings;
     bool originalRan;
+    void* result;           // what the engine handler returned (vm:original): the next node, or a control code such as
+                            // SCR_TrackCurChangeNow's 5 (run the new track now)
 };
 
 VmCall* CheckVm(lua_State* L) { return *(VmCall**)luaL_checkudata(L, 1, "wc.vm"); }
@@ -614,7 +616,7 @@ int vm_original(lua_State* L) {
     VmCall* c = CheckVm(L);
     if (c->hook && c->hook->orig && !c->originalRan) {
         c->originalRan = true;
-        c->hook->orig(c->ip);
+        c->result = c->hook->orig(c->ip);
     }
     return 0;
 }
@@ -641,6 +643,7 @@ void* __cdecl NativeHook(void* ip) {
     call.hook = &h;
     call.native = FindNativeWord(word);
     call.originalRan = false;
+    call.result = NULL;
     // what the stack must look like afterwards: the arguments taken, the result (if any) left
     uint32_t idx0 = VmIndex(), off0 = VmOffset();
     uint32_t argBytes = 0;
@@ -670,6 +673,7 @@ void* __cdecl NativeHook(void* ip) {
             VmOffset() = wantOff;
         }
     }
+    if (call.originalRan) return call.result;
     return (uint8_t*)ip + 4;
 }
 
