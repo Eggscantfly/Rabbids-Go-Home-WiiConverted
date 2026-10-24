@@ -2025,8 +2025,11 @@ The imports must hold the kernel32 functions (another hook there: the loader sta
 main thread): the first call starts every enabled mod's `main.lua` in its own state, later calls run the frame
 callbacks and timers. `wc.native` replaces an element of the native table (`PatchNativeTable`, §12.3) with one
 handler for every hooked word, which finds the word from the rank at `ip`; the Lua function gets a `vm` userdata
-over the VM globals (pop / push as in §12.3; `arg_*` peek at `ptrs[index - 1 - i]`). After a hook that neither
-called the original nor moved the stack, the loader pops the arguments and pushes a zero result of the native's
+over the VM globals (pop / push as in §12.3; `arg_*` peek at `ptrs[index - 1 - i]`). A hook that ran the original
+(`vm:original()`) returns what the engine's handler returned: the next node, or a control code - `SCR_TrackCurChangeNow`
+(0051FAD0) answers 5, run the new track at once; going on at `ip + 4` instead ran the rest of the old track, and a
+Verminator entering its fight state crashed in `IK_LIB_BODY_IK` (`OBJ_PosGet` of a null target, 0053BBDB). After a
+hook that neither called the original nor moved the stack, the loader pops the arguments and pushes a zero result of the native's
 result size (the sizes are in `wm_natives_table.cpp`, generated from the Wii executable's registration tables: 2168
 natives, words identical on the PC). `wc.call` pushes the arguments, calls the handler with a node `{rank, 0}` and
 pops the result.

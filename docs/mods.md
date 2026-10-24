@@ -80,7 +80,9 @@ The `wc` table:
 object it receives is the script stack: `vm:arg_int(i)`, `vm:arg_float(i)`, `vm:arg_string(i)` look at argument `i`
 (0 = the first) without taking it; `vm:pop_int()` / `vm:pop_float()` take the arguments, last first, as the engine
 does; `vm:push_int(v)` / `vm:push_float(v)` / `vm:push_string(s)` give the result; `vm:original()` runs the engine's
-own handler with the arguments still on the stack. A hook that only looks (no pop, no `original()`) makes the call a
+own handler with the arguments still on the stack, and the script then goes on where that handler says (a native such
+as `SCR_TrackCurChangeNow`, which switches to the new track at once, answers a control code instead of the next node).
+A hook that only looks (no pop, no `original()`) makes the call a
 no-op returning 0. `vm:name()` and `vm:word()` say which native this is when one function serves several.
 
 ```lua
