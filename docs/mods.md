@@ -112,9 +112,10 @@ call with the wrong number of arguments is refused with the count.
 ## Settings (`wiimote.ini`)
 
     [mods]
-    enabled=1     ; 0 = mods off
+    enabled=1     ; 0 = mods off (and the built-in record fixes)
     lua=1         ; 0 = the scripts do not run
     log=1         ; what the loader serves and what the scripts log
+    fixes=1       ; the built-in fixes of PC script records (platform.md 23.1), also with no mod enabled
 
 ## Making the files
 

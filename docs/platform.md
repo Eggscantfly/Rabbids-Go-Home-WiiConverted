@@ -2019,6 +2019,27 @@ handle value never inherits virtual mode.
 Verified sites: `i64_KeySearchPos` (006E9DB0, 0x40 bytes) and the `b_Open` call in gameChecks (00409ACB, 0x14).
 The imports must hold the kernel32 functions (another hook there: the loader stays out).
 
+**Built-in record fixes** (`[mods] fixes=1`, also with no mod enabled). The converted archive runs the PC release's
+script records on the Wii worlds; where those disagree, the loader changes the record as it serves the package (a
+world package is read once more from the archive the first time the engine looks it up). Each fix names the record
+key, its body's length and CRC32 (the PC release's record), the place and the 8 bytes before and after; any other
+body - one a mod ships, an already fixed one - is left as it is and logged once. The table holds no game data:
+CRCs, offsets and 8 bytes of node words, like the executable signatures.
+
+| Record | Fix |
+|---|---|
+| `9D003E25` ITEM_Canalisation libs (14059 bytes, CRC32 `B9B99B95`) | `ITEM_Canalisation_CheckParameters` returns at once: node 0 (`globalvar` `0C1E0000`) becomes `jump` `08350000` +0x21F, to node 544, the end |
+
+The pipe junctions of the sewer levels (#10): a scream travels down the pipe and turns the next junction's ball joint
+(`o_rotate_obj`) to the following exit (`ITEM_Canalisation_CheckDirection` picks the axis and the angle,
+`ITEM_Canalisation_ETAT_Run` turns it, `MTH_VecRotate` of `v_rotate_dir` by `f_rotate_angle` x `c_rotate`). The PC
+script passes the ball's horizon, sight and banking through `CheckParameters`, which snaps them to the world axes,
+before the axis is chosen and on every frame of the turn. The Wii's (`Ai2CppWiiFinal.rso`: `CheckDirection`
+811D598C, `ETAT_Run` 811D770C; it has no `CheckParameters`) reads the ball's own axes and turns with
+`OBJ_SightSet(turned, OBJ_BankingGet())` / `OBJ_BankingSet(turned, OBJ_SightGet())`. On the Wii worlds the snapped
+axes left the ball crooked or facing another exit than the one the cart then takes; the angle, its sign and the exit
+choice are the same in both.
+
 ### 23.2 Lua
 
 `wm_lua.cpp` embeds Lua 5.4.7 (`platform/lua/`, MIT). `LuaFrame` runs from the Magma update hook (once per frame,
@@ -2044,9 +2065,12 @@ origin, with an `ID3DXFont` from the game's own `d3dx9_37.dll`, then calls the v
 ### 23.3 Tests
 
 `wmtest mods <PC executable>`: the two sites, package record replacement (a record that grows), a package without
-the record, a truncated package, the synthesized header, key file names, the enabled list. In game: the log lines
+the record, a truncated package, the record fixes (on a synthetic table: the expected body fixed, a fixed one, another
+one and a placeholder left alone, a second pass a no-op; the table's ITEM_Canalisation entry), the synthesized
+header, key file names, the enabled list. In game: the log lines
 `MODS: FFF003C8 served from ... (1 record)` at the title screen with a record of the title package; `LUA ...` lines
-and the demo mod's texts over the picture.
+and the demo mod's texts over the picture; entering a sewer level, `MODS: FFF03B43 served from the built-in fixes:
+pipe junctions turn like on the Wii ...`.
 
 ## 24. Super Mario 64's Mario (`wm_sm64.cpp`, `[sm64]`)
 

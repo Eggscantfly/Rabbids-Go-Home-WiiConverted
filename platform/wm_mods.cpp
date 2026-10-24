@@ -74,7 +74,7 @@ struct Virtual {                                // one entry served from memory
 struct HandleState { int index; uint64_t offset; };
 
 std::vector<std::string> s_pending;
-bool  s_inAttach, s_enabled = true, s_log = true, s_installed;
+bool  s_inAttach, s_enabled = true, s_log = true, s_installed, s_fixes = true;
 std::string s_bigfile;                          // the archive's path
 Fat   s_fat;
 std::map<uint32_t, EntryFile>  s_entryFiles;    // key -> file
@@ -275,6 +275,69 @@ bool PatchPackage(const std::vector<uint8_t>& in, const std::map<uint32_t, Recor
     return true;
 }
 
+// ------------------------------------------------------------------------------------------------- record fixes
+// Fixes of the PC script records the converted archive runs on the Wii worlds, applied to a package as it is served
+// ([mods] fixes=1).  A record changes only when its body (after {key, len}) has the expected length and CRC32 - the
+// PC release's record - and the expected bytes at the place; a body already fixed (a mod that ships it) is left as
+// it is, and so is any other body.
+struct RecordFix {
+    uint32_t key, len, crc, fixedCrc;   // the body: length, CRC32 before and after the fix
+    uint32_t off;                       // where the bytes change
+    uint8_t  old[8], fix[8];
+    const char* what;
+};
+
+// ITEM_Canalisation_ITEM_Canalisation_libs (9D003E25): the pipe junctions of the sewer levels turn a ball joint
+// (o_rotate_obj) to the exit a scream chose.  The PC script passes the ball's axes through
+// ITEM_Canalisation_CheckParameters, which snaps them to the world axes, both when the turn is chosen
+// (ITEM_Canalisation_CheckDirection) and on every frame of the turn (ITEM_Canalisation_ETAT_Run); the Wii's
+// (Ai2CppWiiFinal.rso: CheckDirection 811D598C, ETAT_Run 811D770C, no CheckParameters) uses the ball's own axes:
+// OBJ_SightSet(turned, OBJ_BankingGet()) / OBJ_BankingSet(turned, OBJ_SightGet()).  On the Wii worlds the snapping
+// left the ball crooked or turned to another exit than the one the cart takes.  Fix: CheckParameters' first node
+// becomes a jump to its last (jump 08350000, offset 0x21F: node 0 -> node 544, the end of the procedure).
+const RecordFix kRecordFixes[] = {
+    { 0x9D003E25, 14059, 0xB9B99B95, 0x898DB7F1, 0x61,
+      { 0x00, 0x00, 0x1E, 0x0C, 0x44, 0x0D, 0x00, 0x00 }, { 0x00, 0x00, 0x35, 0x08, 0x1F, 0x02, 0x00, 0x00 },
+      "pipe junctions turn like on the Wii (ITEM_Canalisation_CheckParameters returns at once)" },
+};
+const size_t N_RECORD_FIXES = sizeof(kRecordFixes) / sizeof(kRecordFixes[0]);
+std::map<uint32_t, int> s_fixState;             // key -> 1 fixed, 2 already fixed, 3 differs (logged once each)
+
+// the fixes applied to a package in place; the number of records changed
+int FixPackage(std::vector<uint8_t>& pkg, const RecordFix* fixes, size_t nFixes, std::string& what,
+               std::map<uint32_t, int>* seen) {
+    int changed = 0;
+    size_t o = 0;
+    while (o + 8 <= pkg.size()) {
+        uint32_t key = U32(&pkg[o]), len = U32(&pkg[o + 4]);
+        if (o + 8 + len > pkg.size()) break;
+        for (size_t i = 0; i < nFixes; ++i) {
+            const RecordFix& f = fixes[i];
+            if (f.key != key || len == 0) continue;
+            uint8_t* body = &pkg[o + 8];
+            uint32_t crc = len == f.len ? Crc32(body, len) : 0;
+            int state = 3;
+            if (len == f.len && crc == f.crc && f.off + 8 <= len && !memcmp(body + f.off, f.old, 8)) {
+                memcpy(body + f.off, f.fix, 8);
+                ++changed;
+                state = 1;
+                if (what.find(f.what) == std::string::npos) what += (what.empty() ? "" : "; ") + std::string(f.what);
+            } else if (len == f.len && crc == f.fixedCrc) {
+                state = 2;
+            }
+            if (seen && seen->find(key) == seen->end()) {
+                (*seen)[key] = state;
+                if (state == 2) ModLog("record %08X: already fixed (%s)", key, f.what);
+                else if (state == 3)
+                    ModLog("record %08X: %u bytes, CRC32 %08X, not the expected %u / %08X: left as it is (%s)", key, len,
+                           crc, f.len, f.crc, f.what);
+            }
+        }
+        o += 8 + len;
+    }
+    return changed;
+}
+
 // the virtual index of a key, building the entry the first time; -1 when nothing replaces it (called under the lock)
 int VirtualIndex(uint32_t key) {
     std::map<uint32_t, int>::iterator st = s_keyState.find(key);
@@ -300,23 +363,29 @@ int VirtualIndex(uint32_t key) {
         } else {
             ModLog("%08X: %s cannot be read, the archive's entry is used", key, ef->second.path.c_str());
         }
-    } else if ((key >> 20) == 0xFFF && !s_recordFiles.empty()) {
+    } else if ((key >> 20) == 0xFFF && (!s_recordFiles.empty() || s_fixes)) {
         std::vector<uint8_t> data, refs, patched;
         uint32_t hdr[4] = { 0, 0, 0, 0 };
-        std::string from;
-        int replaced = 0;
-        if (OriginalEntry(key, &data, refs, hdr) && !(hdr[3] & 5) && hdr[0] == hdr[1] &&
-            PatchPackage(data, s_recordFiles, patched, from, &replaced)) {
-            v = new Virtual;
-            v->key = key;
-            v->from = from;
-            char n[40];
-            _snprintf(n, sizeof(n) - 1, " (%d record%s)", replaced, replaced == 1 ? "" : "s");
-            n[sizeof(n) - 1] = 0;
-            v->from += n;
-            PutHeader(v->bytes, (uint32_t)patched.size(), (uint32_t)refs.size());
-            v->bytes.insert(v->bytes.end(), patched.begin(), patched.end());
-            v->bytes.insert(v->bytes.end(), refs.begin(), refs.end());
+        std::string from, fixed;
+        int replaced = 0, nFixed = 0;
+        if (OriginalEntry(key, &data, refs, hdr) && !(hdr[3] & 5) && hdr[0] == hdr[1]) {
+            std::vector<uint8_t>* pkg = &data;
+            if (!s_recordFiles.empty() && PatchPackage(data, s_recordFiles, patched, from, &replaced)) pkg = &patched;
+            if (s_fixes) nFixed = FixPackage(*pkg, kRecordFixes, N_RECORD_FIXES, fixed, &s_fixState);
+            if (replaced || nFixed) {
+                v = new Virtual;
+                v->key = key;
+                char n[64];
+                if (replaced) {
+                    _snprintf(n, sizeof(n) - 1, " (%d record%s)", replaced, replaced == 1 ? "" : "s");
+                    n[sizeof(n) - 1] = 0;
+                    v->from = from + n;
+                }
+                if (nFixed) v->from += (v->from.empty() ? "the built-in fixes: " : "; the built-in fixes: ") + fixed;
+                PutHeader(v->bytes, (uint32_t)pkg->size(), (uint32_t)refs.size());
+                v->bytes.insert(v->bytes.end(), pkg->begin(), pkg->end());
+                v->bytes.insert(v->bytes.end(), refs.begin(), refs.end());
+            }
         }
     }
     if (v) {
@@ -799,6 +868,7 @@ void ModsAttach(const std::string& iniPath) {
     std::string v;
     if (ReadIniKey(iniPath, "mods", "enabled", v)) s_enabled = atoi(v.c_str()) != 0;
     if (ReadIniKey(iniPath, "mods", "log", v)) s_log = atoi(v.c_str()) != 0;
+    if (ReadIniKey(iniPath, "mods", "fixes", v)) s_fixes = atoi(v.c_str()) != 0;
     if (s_enabled) ReadEnabledList();
     ProcessImage img;
     uint8_t probe[4];
@@ -824,7 +894,7 @@ void ModsAttach(const std::string& iniPath) {
         return;
     }
     ScanMods();
-    if (s_entryFiles.empty() && s_recordFiles.empty() && s_musicFiles.empty()) {
+    if (s_entryFiles.empty() && s_recordFiles.empty() && s_musicFiles.empty() && !s_fixes) {
         ModLog("nothing to load: the hooks stay out");
         s_inAttach = false;
         return;
@@ -832,7 +902,9 @@ void ModsAttach(const std::string& iniPath) {
     if (!InstallHooks(why)) ModLog("hooks NOT installed: %s", why.c_str());
     else {
         s_installed = true;
-        ModLog("loader on: archive %s (%u entries in its file table)", s_bigfile.c_str(), (unsigned)s_fat.entries.size());
+        ModLog("loader on: archive %s (%u entries in its file table); %u built-in record fix%s %s",
+               s_bigfile.c_str(), (unsigned)s_fat.entries.size(), (unsigned)N_RECORD_FIXES,
+               N_RECORD_FIXES == 1 ? "" : "es", s_fixes ? "on" : "off ([mods] fixes=0)");
     }
     s_inAttach = false;
 }
@@ -946,6 +1018,54 @@ int __cdecl WiimoteModsSelfTest(char* out, int outSize) {
     ok = !PatchPackage(notPkg, recs, outPkg, from, &replaced);
     Report(rep, ok, "a truncated package is not patched");
     fails += !ok;
+    // the built-in record fixes, on a synthetic table: the expected body is fixed, a fixed one, another one and an
+    // empty placeholder are left alone
+    {
+        uint8_t body[24];
+        for (int i = 0; i < 24; ++i) body[i] = (uint8_t)(i * 7 + 1);
+        RecordFix f;
+        memset(&f, 0, sizeof(f));
+        f.key = 0x9D000001;
+        f.len = 24;
+        f.off = 5;
+        memcpy(f.old, body + 5, 8);
+        for (int i = 0; i < 8; ++i) f.fix[i] = (uint8_t)(0xA0 + i);
+        f.crc = Crc32(body, 24);
+        uint8_t fixedBody[24];
+        memcpy(fixedBody, body, 24);
+        memcpy(fixedBody + 5, f.fix, 8);
+        f.fixedCrc = Crc32(fixedBody, 24);
+        f.what = "test fix";
+        uint8_t other[24];
+        memcpy(other, body, 24);
+        other[20] ^= 0xFF;
+        std::vector<uint8_t> fp;
+        const uint8_t* bodiesF[4] = { body, fixedBody, other, NULL };
+        const uint32_t lens[4] = { 24, 24, 24, 0 };
+        for (int i = 0; i < 4; ++i) {
+            fp.insert(fp.end(), (const uint8_t*)&f.key, (const uint8_t*)&f.key + 4);
+            fp.insert(fp.end(), (const uint8_t*)&lens[i], (const uint8_t*)&lens[i] + 4);
+            if (lens[i]) fp.insert(fp.end(), bodiesF[i], bodiesF[i] + lens[i]);
+        }
+        std::vector<uint8_t> before = fp;
+        std::string what;
+        int n = FixPackage(fp, &f, 1, what, NULL);
+        ok = n == 1 && fp.size() == before.size() && !memcmp(&fp[8], fixedBody, 24) &&
+             !memcmp(&fp[40], fixedBody, 24) && !memcmp(&fp[72], other, 24) && what == "test fix";
+        Report(rep, ok, "record fix: the expected body is fixed (1 of 4), a fixed body, another body and a placeholder "
+               "are left alone");
+        fails += !ok;
+        n = FixPackage(fp, &f, 1, what, NULL);
+        ok = n == 0;
+        Report(rep, ok, "record fix: a second pass changes nothing");
+        fails += !ok;
+        ok = N_RECORD_FIXES >= 1 && kRecordFixes[0].key == 0x9D003E25 &&
+             U32(kRecordFixes[0].old) == 0x0C1E0000 && U32(kRecordFixes[0].fix) == 0x08350000 &&
+             U32(kRecordFixes[0].fix + 4) == 0x21F;
+        Report(rep, ok, "record fix table: ITEM_Canalisation_CheckParameters node 0 globalvar (0C1E0000) -> jump "
+               "(08350000) +0x21F");
+        fails += !ok;
+    }
     // the header
     std::vector<uint8_t> h;
     PutHeader(h, 1234, 24);
